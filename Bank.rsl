@@ -1,0 +1,190 @@
+BANK =
+    class
+    
+    type
+      UserId,
+      AccountId,
+    
+      Money = Nat,
+      Percent = Nat,
+      Term = Nat,
+    
+      AccountKind ==
+          current
+        | deposit(interest : Percent, term : Term, replenishable : Bool, capitalization : Bool)
+        | credit(interest : Percent, term : Term, replenishable : Bool, limit : Money),
+    
+      Account ::
+        account_id : AccountId
+        balance : Money
+        account_kind : AccountKind,
+    
+      User ::
+        user_id : UserId
+        accounts : Account*,
+    
+      Bank ::
+        users : User*
+    
+    value
+      is_valid_account_kind : AccountKind -> Bool,
+    
+      is_replenishable : Account -> Bool,
+    
+      has_user : UserId >< Bank -> Bool,
+      has_account : AccountId >< Bank -> Bool,
+    
+      find_account : AccountId >< Bank ~-> Account,
+    
+      unique_user_ids : User* -> Bool,
+      unique_account_ids : Account* -> Bool,
+      unique_bank_account_ids : Bank -> Bool,
+    
+      is_wf_bank : Bank -> Bool,
+    
+      replenish : AccountId >< Money >< Bank ~-> Bank,
+    
+      transfer : AccountId >< AccountId >< Money >< Bank ~-> Bank
+    
+    axiom
+    
+      all k : AccountKind :-
+    
+        is_valid_account_kind(k) is
+          case k of
+            current -> true,
+            deposit(p, t, r, c) -> p > 0 /\ t > 0,
+            credit(p, t, r, l) -> p > 0 /\ t > 0 /\ l > 0
+          end,
+    
+      all a : Account :-
+    
+        is_replenishable(a) is
+          case account_kind(a) of
+            current -> true,
+            deposit(p, t, r, c) -> r,
+            credit(p, t, r, l) -> r
+          end,
+    
+      all uid : UserId, b : Bank :-
+    
+        has_user(uid, b) is
+          exists u : User :-
+            u isin elems users(b) /\
+            user_id(u) = uid,
+    
+      all aid : AccountId, b : Bank :-
+    
+        has_account(aid, b) is
+          exists u : User, a : Account :-
+            u isin elems users(b) /\
+            a isin elems accounts(u) /\
+            account_id(a) = aid,
+    
+      all aid : AccountId, b : Bank :-
+    
+        find_account(aid, b) as a
+        post
+          exists u : User :-
+            u isin elems users(b) /\
+            a isin elems accounts(u) /\
+            account_id(a) = aid
+        pre
+          has_account(aid, b),
+    
+      all us : User* :-
+    
+        unique_user_ids(us) is
+          all u1, u2 : User :-
+            u1 isin elems us /\
+            u2 isin elems us /\
+            user_id(u1) = user_id(u2)
+            =>
+            u1 = u2,
+    
+      all accs : Account* :-
+    
+        unique_account_ids(accs) is
+          all a1, a2 : Account :-
+            a1 isin elems accs /\
+            a2 isin elems accs /\
+            account_id(a1) = account_id(a2)
+            =>
+            a1 = a2,
+    
+      all b : Bank :-
+    
+        unique_bank_account_ids(b) is
+          all u1, u2 : User, a1, a2 : Account :-
+            u1 isin elems users(b) /\
+            u2 isin elems users(b) /\
+            a1 isin elems accounts(u1) /\
+            a2 isin elems accounts(u2) /\
+            account_id(a1) = account_id(a2)
+            =>
+            a1 = a2,
+    
+      all b : Bank :-
+    
+        is_wf_bank(b) is
+          unique_user_ids(users(b)) /\
+          unique_bank_account_ids(b) /\
+          all u : User :-
+            u isin elems users(b)
+            =>
+            unique_account_ids(accounts(u)) /\
+            all a : Account :-
+              a isin elems accounts(u)
+              =>
+              is_valid_account_kind(account_kind(a)),
+    
+      all aid : AccountId, amount : Money, b : Bank :-
+    
+        replenish(aid, amount, b) as b1
+        post
+          is_wf_bank(b1) /\
+          has_account(aid, b1) /\
+          balance(find_account(aid, b1)) =
+            balance(find_account(aid, b)) + amount /\
+          account_kind(find_account(aid, b1)) =
+            account_kind(find_account(aid, b)) /\
+          all other : AccountId :-
+            other ~= aid /\
+            has_account(other, b)
+            =>
+            find_account(other, b1) = find_account(other, b)
+        pre
+          is_wf_bank(b) /\
+          has_account(aid, b) /\
+          amount > 0 /\
+          is_replenishable(find_account(aid, b)),
+    
+      all from_id : AccountId, to_id : AccountId, amount : Money, b : Bank :-
+    
+        transfer(from_id, to_id, amount, b) as b1
+        post
+          is_wf_bank(b1) /\
+          balance(find_account(from_id, b1)) =
+            balance(find_account(from_id, b)) - amount /\
+          balance(find_account(to_id, b1)) =
+            balance(find_account(to_id, b)) + amount /\
+          account_kind(find_account(from_id, b1)) =
+            account_kind(find_account(from_id, b)) /\
+          account_kind(find_account(to_id, b1)) =
+            account_kind(find_account(to_id, b)) /\
+          all other : AccountId :-
+            other ~= from_id /\
+            other ~= to_id /\
+            has_account(other, b)
+            =>
+            find_account(other, b1) = find_account(other, b)
+        pre
+          is_wf_bank(b) /\
+          has_account(from_id, b) /\
+          has_account(to_id, b) /\
+          from_id ~= to_id /\
+          amount > 0 /\
+          balance(find_account(from_id, b)) >= amount /\
+          is_replenishable(find_account(to_id, b))
+    
+    end
